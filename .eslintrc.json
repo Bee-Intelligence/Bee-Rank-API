@@ -1,0 +1,19 @@
+{
+  "extends": ["plugin:unicorn/recommended"],
+  "globals": {
+    "Global1": "readonly"
+  },
+  "ignore_patterns": ["dist/**"],
+  "overrides": [
+    {
+      "files": ["tests/**"],
+      "rules": {
+        "eqeqeq": "off"
+      }
+    }
+  ],
+  "plugins": ["unicorn"],
+  "rules": {
+    "eqeqeq": "error"
+  }
+}
