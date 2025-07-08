@@ -1,10 +1,11 @@
 import express from "express";
 import { TransitRouteController } from "../controllers/TransitRouteController";
-import { TransitRouteService } from "../services";
+// TransitRouteService not implemented yet
+// import { TransitRouteService } from "../services";
 
 const router = express.Router();
-const transitRouteService = new TransitRouteService("transitRoute");
-const transitRouteController = new TransitRouteController(transitRouteService);
+// TransitRouteService not implemented yet
+const transitRouteController = new TransitRouteController();
 
 // Transit route management routes
 router.get("/", transitRouteController.getAll);

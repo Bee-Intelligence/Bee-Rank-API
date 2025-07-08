@@ -3,7 +3,7 @@ import { JourneyController } from "../controllers/JourneyController";
 import { JourneyService } from "../services";
 
 const router = express.Router();
-const journeyService = new JourneyService("journey");
+const journeyService = new JourneyService();
 const journeyController = new JourneyController(journeyService);
 
 // Journey management routes

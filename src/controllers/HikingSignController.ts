@@ -25,19 +25,15 @@ export class HikingSignController extends BaseController {
       user_id: validatedQuery.userId,
     };
 
-    const { signs, total } =
-      await this.hikingSignService.getHikingSigns(searchParams);
-    return this.paginatedResponse(
-      res,
-      signs,
-      total,
-      pagination.page!,
-      pagination.per_page!,
+    const signs = await this.hikingSignService.getAllHikingSigns(
+      pagination.per_page,
+      pagination.offset
     );
+    return this.successResponse(res, signs);
   });
 
   getById = this.asyncHandler(async (req: Request, res: Response) => {
-    const id = this.validateId(req.params.id);
+    const id = req.params.id;
     const sign = await this.hikingSignService.getHikingSignById(id);
 
     if (!sign) {
@@ -104,6 +100,8 @@ export class HikingSignController extends BaseController {
       to_location: validatedData.toLocation,
       fare_amount: validatedData.fareAmount,
       sign_type: validatedData.signType,
+      destination: validatedData.toLocation || validatedData.address || 'Unknown',
+      fare: validatedData.fareAmount || 0,
     };
 
     const sign = await this.hikingSignService.createHikingSign(signData);
@@ -115,14 +113,14 @@ export class HikingSignController extends BaseController {
           "userActivity",
         );
       if (userActivityService) {
-        await userActivityService.createUserActivity({
+        await userActivityService.recordActivity({
           user_id: userId,
-          activity_type: "sign_upload",
+          activity_type: "SIGN_UPLOADED",
           description: `Uploaded hiking sign: ${sign.description || "No description"}`,
           metadata: {
             signId: sign.id,
             signName: sign.description,
-            location: `${sign.latitude}, ${sign.longitude}`,
+            location: `${signData.latitude}, ${signData.longitude}`,
           },
         });
       }
@@ -170,7 +168,7 @@ export class HikingSignController extends BaseController {
       ...(validatedData.signType && { sign_type: validatedData.signType }),
     };
 
-    const sign = await this.hikingSignService.updateHikingSign(id, updateData);
+    const sign = await this.hikingSignService.updateHikingSign(req.params.id, updateData);
     if (!sign) {
       return res
         .status(404)
@@ -182,7 +180,7 @@ export class HikingSignController extends BaseController {
 
   delete = this.asyncHandler(async (req: Request, res: Response) => {
     const id = this.validateId(req.params.id);
-    const success = await this.hikingSignService.deleteHikingSign(id);
+    const success = await this.hikingSignService.deleteHikingSign(req.params.id);
 
     if (!success) {
       return res
@@ -197,7 +195,7 @@ export class HikingSignController extends BaseController {
     const id = this.validateId(req.params.id);
     const userId = "demo-User"; // Extract from auth token in production
 
-    const sign = await this.hikingSignService.verifyHikingSign(id, userId);
+    const sign = await this.hikingSignService.verifyHikingSign(req.params.id, userId, 'VERIFIED');
     if (!sign) {
       return res
         .status(404)
@@ -216,19 +214,16 @@ export class HikingSignController extends BaseController {
       user_id: userId,
     };
 
-    const { signs, total } =
-      await this.hikingSignService.getHikingSigns(searchParams);
-    return this.paginatedResponse(
-      res,
-      signs,
-      total,
-      pagination.page!,
-      pagination.per_page!,
+    const signs = await this.hikingSignService.getUserHikingSigns(
+      userId,
+      pagination.per_page,
+      pagination.offset
     );
+    return this.successResponse(res, signs);
   });
 
   getVerified = this.asyncHandler(async (req: Request, res: Response) => {
-    const signs = await this.hikingSignService.getVerifiedSigns();
+    const signs = await this.hikingSignService.getAllHikingSigns();
     return this.successResponse(res, signs);
   });
 }

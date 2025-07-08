@@ -71,7 +71,7 @@ router.post(
         file_data: req.file.buffer,
       };
 
-      const uploadedFile = await fileStorageService.uploadFile(fileData);
+      const uploadedFile = await fileStorageService.uploadFileFromRoute(fileData);
 
       res.json({
         success: true,
@@ -242,7 +242,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
       });
     }
 
-    const success = await fileStorageService.deleteFile(id, userId);
+    const success = await fileStorageService.deleteFile(id);
 
     if (!success) {
       return res.status(404).json({

@@ -20,7 +20,7 @@ const upload = multer({
   },
 });
 
-const hikingSignService = new HikingSignService("hikingSign");
+const hikingSignService = new HikingSignService();
 const hikingSignController = new HikingSignController(hikingSignService);
 
 // Hiking sign management routes

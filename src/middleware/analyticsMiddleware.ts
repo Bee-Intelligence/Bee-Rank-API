@@ -14,17 +14,17 @@ export function trackAnalytics(eventType: string) {
         typeof analyticsService.trackEvent === "function"
       ) {
         await analyticsService.trackEvent({
-          event_type: eventType,
-          user_id: (req as any).user?.id || "anonymous",
+          eventType: eventType,
+          userId: (req as any).user?.id || "anonymous",
           metadata: {
             path: req.path,
             method: req.method,
             query: req.query,
             userAgent: req.get("User-Agent"),
             ip: req.ip,
+            sessionId: (req as any).sessionId || req.get("Session-ID"),
+            timestamp: new Date().toISOString(),
           },
-          session_id: (req as any).sessionId || req.get("Session-ID"),
-          timestamp: new Date(),
         });
       }
     } catch (error) {
@@ -54,8 +54,8 @@ export function trackApiUsage() {
         typeof analyticsService.trackEvent === "function"
       ) {
         await analyticsService.trackEvent({
-          event_type: "api_usage",
-          user_id: (req as any).user?.id || "anonymous",
+          eventType: "api_usage",
+          userId: (req as any).user?.id || "anonymous",
           metadata: {
             endpoint: req.originalUrl,
             method: req.method,
@@ -65,9 +65,9 @@ export function trackApiUsage() {
             ip: req.ip,
             body_size: JSON.stringify(req.body || {}).length,
             query_params: Object.keys(req.query || {}).length,
+            sessionId: (req as any).sessionId || req.get("Session-ID"),
+            timestamp: new Date().toISOString(),
           },
-          session_id: (req as any).sessionId || req.get("Session-ID"),
-          timestamp: new Date(),
         });
       }
     } catch (error) {
@@ -98,8 +98,8 @@ export function trackSearch() {
         const { query, filters, location } = req.query;
 
         await analyticsService.trackEvent({
-          event_type: "search",
-          user_id: (req as any).user?.id || "anonymous",
+          eventType: "search",
+          userId: (req as any).user?.id || "anonymous",
           metadata: {
             search_query: query,
             filters: filters,
@@ -108,9 +108,9 @@ export function trackSearch() {
             method: req.method,
             user_agent: req.get("User-Agent"),
             ip: req.ip,
+            sessionId: (req as any).sessionId || req.get("Session-ID"),
+            timestamp: new Date().toISOString(),
           },
-          session_id: (req as any).sessionId || req.get("Session-ID"),
-          timestamp: new Date(),
         });
       }
     } catch (error) {
@@ -139,8 +139,8 @@ export function trackError() {
         typeof analyticsService.trackEvent === "function"
       ) {
         await analyticsService.trackEvent({
-          event_type: "error",
-          user_id: (req as any).user?.id || "anonymous",
+          eventType: "error",
+          userId: (req as any).user?.id || "anonymous",
           metadata: {
             error_message: err.message,
             error_stack: err.stack,
@@ -149,9 +149,9 @@ export function trackError() {
             status_code: res.statusCode,
             user_agent: req.get("User-Agent"),
             ip: req.ip,
+            sessionId: (req as any).sessionId || req.get("Session-ID"),
+            timestamp: new Date().toISOString(),
           },
-          session_id: (req as any).sessionId || req.get("Session-ID"),
-          timestamp: new Date(),
         });
       }
     } catch (error) {

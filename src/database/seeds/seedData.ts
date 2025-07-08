@@ -60,6 +60,17 @@ export async function seedAllData() {
     // Populate API rate limits
     await populateApiRateLimits();
 
+    // Populate new service tables
+    await populateEmailTemplates();
+    await populateEmailQueue();
+    await populateFeatureFlags();
+    await populateAuthSessions();
+    await populateCacheEntries();
+    await populateWebSocketSessions();
+
+    // Populate entertainment events
+    await populateEntertainmentEvents();
+
     console.log("✅ Database population completed successfully");
   } catch (error) {
     console.error("❌ Database population failed:", error);
@@ -1394,8 +1405,373 @@ async function populateReviewVotes() {
                 ${i % 2 === 0 ? "helpful" : "not_helpful"}
             )
         `;
-  }
-}
+      }
+    }
+    
+    async function populateEmailTemplates() {
+      console.log("📧 Populating email templates...");
+    
+      const templates = [
+        {
+          template_key: "welcome_email",
+          subject: "Welcome to Bee FOMO!",
+          html_content: "<h1>Welcome {{first_name}}!</h1><p>Thank you for joining Bee FOMO. Start exploring taxi routes and fares in your area.</p>",
+          text_content: "Welcome {{first_name}}! Thank you for joining Bee FOMO. Start exploring taxi routes and fares in your area.",
+          template_variables: '["first_name", "email"]',
+          is_active: true,
+        },
+        {
+          template_key: "journey_reminder",
+          subject: "Your journey reminder - {{route_name}}",
+          html_content: "<h2>Journey Reminder</h2><p>Hi {{first_name}}, your planned journey from {{from_location}} to {{to_location}} starts in {{time_remaining}}.</p>",
+          text_content: "Hi {{first_name}}, your planned journey from {{from_location}} to {{to_location}} starts in {{time_remaining}}.",
+          template_variables: '["first_name", "route_name", "from_location", "to_location", "time_remaining"]',
+          is_active: true,
+        },
+        {
+          template_key: "fare_update",
+          subject: "Fare Update: {{route_name}}",
+          html_content: "<h2>Fare Update</h2><p>The fare for {{route_name}} has been updated to R{{new_fare}}.</p>",
+          text_content: "The fare for {{route_name}} has been updated to R{{new_fare}}.",
+          template_variables: '["route_name", "new_fare"]',
+          is_active: true,
+        },
+        {
+          template_key: "password_reset",
+          subject: "Reset your Bee FOMO password",
+          html_content: "<h2>Password Reset</h2><p>Click <a href='{{reset_link}}'>here</a> to reset your password.</p>",
+          text_content: "Click this link to reset your password: {{reset_link}}",
+          template_variables: '["reset_link", "first_name"]',
+          is_active: true,
+        },
+        {
+          template_key: "journey_complete",
+          subject: "Journey completed successfully",
+          html_content: "<h2>Journey Complete</h2><p>Your journey from {{from_location}} to {{to_location}} has been completed. Total fare: R{{total_fare}}.</p>",
+          text_content: "Your journey from {{from_location}} to {{to_location}} has been completed. Total fare: R{{total_fare}}.",
+          template_variables: '["from_location", "to_location", "total_fare"]',
+          is_active: true,
+        },
+      ];
+    
+      for (const template of templates) {
+        await sql`
+          INSERT INTO email_templates (
+            template_key, subject, html_content, text_content,
+            variables, is_active
+          )
+          VALUES (
+            ${template.template_key}, ${template.subject},
+            ${template.html_content}, ${template.text_content}, ${template.template_variables},
+            ${template.is_active}
+          )
+          ON CONFLICT (template_key) DO NOTHING
+        `;
+      }
+    }
+    
+    async function populateEmailQueue() {
+      console.log("📬 Populating email queue...");
+    
+      const users = await sql`SELECT id, email, first_name FROM users LIMIT 5`;
+      const templates = await sql`SELECT id, template_key FROM email_templates LIMIT 3`;
+    
+      if (users.length === 0 || templates.length === 0) {
+        console.log("⚠️ No users or templates found, skipping email queue population");
+        return;
+      }
+    
+      const queueItems = [
+        {
+          to_email: users[0]?.email,
+          from_email: "noreply@beefomo.com",
+          subject: "Welcome to Bee FOMO!",
+          template_key: "welcome_email",
+          template_data: `{"first_name": "${users[0]?.first_name}", "email": "${users[0]?.email}"}`,
+          status: "pending",
+          priority: 1,
+          scheduled_at: new Date(),
+        },
+        {
+          to_email: users[1]?.email,
+          from_email: "noreply@beefomo.com",
+          subject: "Your journey reminder - Cape Town to Wynberg",
+          template_key: "journey_reminder",
+          template_data: `{"first_name": "${users[1]?.first_name}", "route_name": "Cape Town to Wynberg", "from_location": "Cape Town CBD", "to_location": "Wynberg", "time_remaining": "30 minutes"}`,
+          status: "sent",
+          priority: 2,
+          scheduled_at: new Date(Date.now() - 3600000), // 1 hour ago
+          sent_at: new Date(Date.now() - 3000000), // 50 minutes ago
+        },
+        {
+          to_email: users[2]?.email,
+          from_email: "noreply@beefomo.com",
+          subject: "Fare Update: Bellville to Khayelitsha",
+          template_key: "fare_update",
+          template_data: `{"route_name": "Bellville to Khayelitsha", "new_fare": "20.00"}`,
+          status: "failed",
+          priority: 3,
+          scheduled_at: new Date(Date.now() - 7200000), // 2 hours ago
+          error_message: "SMTP connection failed",
+        },
+      ];
+    
+      for (const item of queueItems) {
+        await sql`
+          INSERT INTO email_queue (
+            to_email, from_email, subject, template_key, template_data,
+            status, priority, scheduled_at, sent_at, error_message
+          )
+          VALUES (
+            ${item.to_email}, ${item.from_email}, ${item.subject}, ${item.template_key},
+            ${item.template_data}, ${item.status}, ${item.priority},
+            ${item.scheduled_at}, ${item.sent_at || null}, ${item.error_message || null}
+          )
+        `;
+      }
+    }
+    
+    async function populateFeatureFlags() {
+      console.log("🚩 Populating feature flags...");
+    
+      const flags = [
+        {
+          flag_key: "new_journey_planner",
+          flag_name: "New Journey Planner",
+          description: "Enable the new multi-hop journey planning feature",
+          is_enabled: true,
+          rollout_percentage: 100,
+          target_audience: "all",
+          is_active: true,
+        },
+        {
+          flag_key: "real_time_tracking",
+          flag_name: "Real-time Taxi Tracking",
+          description: "Enable real-time tracking of taxi locations",
+          is_enabled: false,
+          rollout_percentage: 25,
+          target_audience: "beta_users",
+          is_active: true,
+        },
+        {
+          flag_key: "fare_predictions",
+          flag_name: "Fare Predictions",
+          description: "Show predicted fare changes based on demand",
+          is_enabled: true,
+          rollout_percentage: 50,
+          target_audience: "premium_users",
+          is_active: true,
+        },
+        {
+          flag_key: "social_sharing",
+          flag_name: "Social Sharing",
+          description: "Allow users to share routes on social media",
+          is_enabled: true,
+          rollout_percentage: 80,
+          target_audience: "all",
+          is_active: true,
+        },
+        {
+          flag_key: "offline_mode",
+          flag_name: "Offline Mode",
+          description: "Enable offline functionality for core features",
+          is_enabled: false,
+          rollout_percentage: 10,
+          target_audience: "beta_users",
+          is_active: false,
+        },
+      ];
+    
+      for (const flag of flags) {
+        await sql`
+          INSERT INTO feature_flags (
+            flag_key, name, description, is_enabled, rollout_percentage,
+            target_groups, is_active
+          )
+          VALUES (
+            ${flag.flag_key}, ${flag.flag_name}, ${flag.description},
+            ${flag.is_enabled}, ${flag.rollout_percentage},
+            ${JSON.stringify([flag.target_audience])}, ${flag.is_active}
+          )
+          ON CONFLICT (flag_key) DO NOTHING
+        `;
+      }
+    }
+    
+    async function populateAuthSessions() {
+      console.log("🔐 Populating auth sessions...");
+    
+      const users = await sql`SELECT id FROM users LIMIT 5`;
+    
+      if (users.length === 0) {
+        console.log("⚠️ No users found, skipping auth sessions population");
+        return;
+      }
+    
+      const sessions = [
+        {
+          user_id: users[0]?.id,
+          access_token_hash: `access_hash_${Date.now()}_1`,
+          refresh_token_hash: `refresh_hash_${Date.now()}_1`,
+          device_info: "iPhone 12 Pro - iOS 15.0",
+          ip_address: "192.168.1.100",
+          user_agent: "Bee FOMO iOS App v1.0.0",
+          is_active: true,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        },
+        {
+          user_id: users[1]?.id,
+          access_token_hash: `access_hash_${Date.now()}_2`,
+          refresh_token_hash: `refresh_hash_${Date.now()}_2`,
+          device_info: "Samsung Galaxy S21 - Android 11",
+          ip_address: "192.168.1.101",
+          user_agent: "Bee FOMO Android App v1.0.0",
+          is_active: true,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+        {
+          user_id: users[2]?.id,
+          access_token_hash: `access_hash_${Date.now()}_3`,
+          refresh_token_hash: `refresh_hash_${Date.now()}_3`,
+          device_info: "Chrome Browser - Windows 11",
+          ip_address: "192.168.1.102",
+          user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          is_active: false,
+          expires_at: new Date(Date.now() - 24 * 60 * 60 * 1000), // Expired yesterday
+        },
+      ];
+    
+      for (const session of sessions) {
+        await sql`
+          INSERT INTO auth_sessions (
+            user_id, access_token_hash, refresh_token_hash, device_info, ip_address,
+            user_agent, is_active, expires_at
+          )
+          VALUES (
+            ${session.user_id}, ${session.access_token_hash}, ${session.refresh_token_hash},
+            ${JSON.stringify({info: session.device_info})}, ${session.ip_address},
+            ${session.user_agent}, ${session.is_active}, ${session.expires_at}
+          )
+        `;
+      }
+    }
+    
+    async function populateCacheEntries() {
+      console.log("💾 Populating cache entries...");
+    
+      const cacheEntries = [
+        {
+          cache_key: "taxi_ranks:cape_town",
+          cache_value: '{"ranks": [{"id": 1, "name": "Cape Town CBD Taxi Rank", "latitude": -33.9249, "longitude": 18.4241}]}',
+          expires_at: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+          last_accessed: new Date(),
+        },
+        {
+          cache_key: "routes:popular",
+          cache_value: '{"routes": [{"from": "Cape Town CBD", "to": "Wynberg", "fare": 15.50}]}',
+          expires_at: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+          last_accessed: new Date(Date.now() - 10 * 60 * 1000), // 10 minutes ago
+        },
+        {
+          cache_key: "user_preferences:123",
+          cache_value: '{"theme": "dark", "notifications": true, "language": "en"}',
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          last_accessed: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
+        },
+        {
+          cache_key: "fare_predictions:durban",
+          cache_value: '{"predictions": [{"route": "Durban to Pinetown", "predicted_fare": 14.50, "confidence": 0.85}]}',
+          expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+          last_accessed: new Date(),
+        },
+        {
+          cache_key: "weather:johannesburg",
+          cache_value: '{"temperature": 22, "condition": "sunny", "humidity": 45}',
+          expires_at: new Date(Date.now() - 5 * 60 * 1000), // Expired 5 minutes ago
+          last_accessed: new Date(Date.now() - 10 * 60 * 1000),
+        },
+      ];
+    
+      for (const entry of cacheEntries) {
+        await sql`
+          INSERT INTO cache_entries (
+            cache_key, cache_value, expires_at, last_accessed
+          )
+          VALUES (
+            ${entry.cache_key}, ${entry.cache_value}, ${entry.expires_at}, ${entry.last_accessed}
+          )
+          ON CONFLICT (cache_key) DO NOTHING
+        `;
+      }
+    }
+    
+    async function populateWebSocketSessions() {
+      console.log("🔌 Populating WebSocket sessions...");
+    
+      const users = await sql`SELECT id FROM users LIMIT 5`;
+    
+      if (users.length === 0) {
+        console.log("⚠️ No users found, skipping WebSocket sessions population");
+        return;
+      }
+    
+      const sessions = [
+        {
+          user_id: users[0]?.id,
+          socket_id: `socket_${Date.now()}_1`,
+          status: "connected",
+          room: "journey_tracking",
+          device_info: "iPhone 12 Pro",
+          ip_address: "192.168.1.100",
+          last_ping: new Date(),
+        },
+        {
+          user_id: users[1]?.id,
+          socket_id: `socket_${Date.now()}_2`,
+          status: "connected",
+          room: "fare_updates",
+          device_info: "Samsung Galaxy S21",
+          ip_address: "192.168.1.101",
+          last_ping: new Date(Date.now() - 30000), // 30 seconds ago
+        },
+        {
+          user_id: users[2]?.id,
+          socket_id: `socket_${Date.now()}_3`,
+          status: "disconnected",
+          room: "general",
+          device_info: "Chrome Browser",
+          ip_address: "192.168.1.102",
+          last_ping: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
+          disconnected_at: new Date(Date.now() - 2 * 60 * 1000), // 2 minutes ago
+        },
+        {
+          user_id: users[3]?.id,
+          socket_id: `socket_${Date.now()}_4`,
+          status: "connected",
+          room: "notifications",
+          device_info: "iPad Pro",
+          ip_address: "192.168.1.103",
+          last_ping: new Date(Date.now() - 10000), // 10 seconds ago
+        },
+      ];
+    
+      for (const session of sessions) {
+        await sql`
+          INSERT INTO websocket_sessions (
+            user_id, socket_id, status, room, connection_info,
+            last_ping, disconnected_at
+          )
+          VALUES (
+            ${session.user_id}, ${session.socket_id}, ${session.status},
+            ${session.room}, ${JSON.stringify({
+              device_info: session.device_info,
+              ip_address: session.ip_address
+            })},
+            ${session.last_ping}, ${session.disconnected_at || null}
+          )
+        `;
+      }
+    }
 
 async function populateApiRateLimits() {
   console.log("🚦 Populating API rate limits with simulated IPs...");
@@ -1436,4 +1812,245 @@ async function populateApiRateLimits() {
                );
     `;
   }
+}
+
+async function populateEntertainmentEvents() {
+ console.log("🎭 Populating entertainment events...");
+
+ const entertainmentEvents = [
+   {
+     title: "The Lion King Musical",
+     description: "Experience the magic of Disney's The Lion King in this spectacular musical production featuring stunning costumes, incredible music, and breathtaking performances.",
+     event_type: "musical",
+     venue: "Artscape Theatre Centre",
+     address: "D.F. Malan Street, Foreshore, Cape Town, 8001",
+     city: "Cape Town",
+     province: "Western Cape",
+     latitude: -33.9157,
+     longitude: 18.4233,
+     event_date: "2024-02-15",
+     event_time: "19:30",
+     price_min: 250.00,
+     price_max: 850.00,
+     image_url: "https://example.com/events/lion-king.jpg",
+     website_url: "https://artscape.co.za/lion-king",
+     contact_info: "+27 21 410 9800",
+     is_featured: true,
+     is_active: true,
+   },
+   {
+     title: "Comedy Night with Trevor Noah",
+     description: "Join world-renowned comedian Trevor Noah for an evening of hilarious stand-up comedy and social commentary.",
+     event_type: "comedy",
+     venue: "Grand Arena, GrandWest",
+     address: "1 Vasco Boulevard, Goodwood, Cape Town, 7460",
+     city: "Cape Town",
+     province: "Western Cape",
+     latitude: -33.8851,
+     longitude: 18.5186,
+     event_date: "2024-03-22",
+     event_time: "20:00",
+     price_min: 350.00,
+     price_max: 1200.00,
+     image_url: "https://example.com/events/trevor-noah.jpg",
+     website_url: "https://grandwest.co.za/trevor-noah",
+     contact_info: "+27 21 505 7777",
+     is_featured: true,
+     is_active: true,
+   },
+   {
+     title: "Black Coffee Live",
+     description: "Experience the electrifying beats of South Africa's own Black Coffee in this exclusive DJ performance featuring deep house and electronic music.",
+     event_type: "dj",
+     venue: "Shimmy Beach Club",
+     address: "South Arm Road, V&A Waterfront, Cape Town, 8001",
+     city: "Cape Town",
+     province: "Western Cape",
+     latitude: -33.9067,
+     longitude: 18.4233,
+     event_date: "2024-04-05",
+     event_time: "22:00",
+     price_min: 180.00,
+     price_max: 500.00,
+     image_url: "https://example.com/events/black-coffee.jpg",
+     website_url: "https://shimmybeachclub.com/black-coffee",
+     contact_info: "+27 21 200 7778",
+     is_featured: true,
+     is_active: true,
+   },
+   {
+     title: "Hamlet - Shakespeare in the Park",
+     description: "A modern interpretation of Shakespeare's classic tragedy performed under the stars in Kirstenbosch Botanical Gardens.",
+     event_type: "theatre",
+     venue: "Kirstenbosch National Botanical Garden",
+     address: "Rhodes Drive, Newlands, Cape Town, 7700",
+     city: "Cape Town",
+     province: "Western Cape",
+     latitude: -33.9881,
+     longitude: 18.4324,
+     event_date: "2024-02-28",
+     event_time: "19:00",
+     price_min: 120.00,
+     price_max: 300.00,
+     image_url: "https://example.com/events/hamlet.jpg",
+     website_url: "https://kirstenbosch.co.za/hamlet",
+     contact_info: "+27 21 799 8783",
+     is_featured: false,
+     is_active: true,
+   },
+   {
+     title: "Coldplay World Tour",
+     description: "Don't miss Coldplay's spectacular world tour featuring hits from their latest album and classic favorites with stunning visual effects.",
+     event_type: "concert",
+     venue: "DHL Stadium",
+     address: "Fritz Sonnenberg Road, Green Point, Cape Town, 8005",
+     city: "Cape Town",
+     province: "Western Cape",
+     latitude: -33.9054,
+     longitude: 18.4104,
+     event_date: "2024-05-18",
+     event_time: "19:30",
+     price_min: 450.00,
+     price_max: 2500.00,
+     image_url: "https://example.com/events/coldplay.jpg",
+     website_url: "https://dhlstadium.co.za/coldplay",
+     contact_info: "+27 21 659 5600",
+     is_featured: true,
+     is_active: true,
+   },
+   {
+     title: "Jazz at the Baxter",
+     description: "An intimate evening of contemporary South African jazz featuring local artists and special guest performers.",
+     event_type: "concert",
+     venue: "Baxter Theatre Centre",
+     address: "Main Road, Rondebosch, Cape Town, 7700",
+     city: "Cape Town",
+     province: "Western Cape",
+     latitude: -33.9579,
+     longitude: 18.4734,
+     event_date: "2024-03-10",
+     event_time: "20:30",
+     price_min: 80.00,
+     price_max: 200.00,
+     image_url: "https://example.com/events/jazz-baxter.jpg",
+     website_url: "https://baxter.co.za/jazz-night",
+     contact_info: "+27 21 685 7880",
+     is_featured: false,
+     is_active: true,
+   },
+   {
+     title: "Durban Comedy Festival",
+     description: "Three days of non-stop laughter featuring South Africa's top comedians and international guest performers.",
+     event_type: "comedy",
+     venue: "Durban ICC",
+     address: "45 Bram Fischer Road, Durban, 4001",
+     city: "Durban",
+     province: "KwaZulu-Natal",
+     latitude: -29.8579,
+     longitude: 31.0292,
+     event_date: "2024-04-12",
+     event_time: "19:00",
+     price_min: 150.00,
+     price_max: 400.00,
+     image_url: "https://example.com/events/durban-comedy.jpg",
+     website_url: "https://durban-icc.co.za/comedy-festival",
+     contact_info: "+27 31 360 1000",
+     is_featured: false,
+     is_active: true,
+   },
+   {
+     title: "Johannesburg Theatre Festival",
+     description: "A celebration of contemporary South African theatre featuring emerging and established playwrights and performers.",
+     event_type: "theatre",
+     venue: "Market Theatre",
+     address: "56 Margaret Mcingana Street, Newtown, Johannesburg, 2001",
+     city: "Johannesburg",
+     province: "Gauteng",
+     latitude: -26.2023,
+     longitude: 28.0436,
+     event_date: "2024-06-08",
+     event_time: "18:00",
+     price_min: 100.00,
+     price_max: 250.00,
+     image_url: "https://example.com/events/jhb-theatre.jpg",
+     website_url: "https://markettheatre.co.za/festival",
+     contact_info: "+27 11 832 1641",
+     is_featured: false,
+     is_active: true,
+   },
+   {
+     title: "Afrikaans is Groot Concert",
+     description: "The biggest Afrikaans music festival featuring top artists like Bok van Blerk, Karen Zoid, and many more.",
+     event_type: "concert",
+     venue: "Time Square Sun Arena",
+     address: "Menlyn Maine Central Square, Pretoria, 0181",
+     city: "Pretoria",
+     province: "Gauteng",
+     latitude: -25.7863,
+     longitude: 28.2773,
+     event_date: "2024-07-20",
+     event_time: "18:30",
+     price_min: 200.00,
+     price_max: 600.00,
+     image_url: "https://example.com/events/afrikaans-groot.jpg",
+     website_url: "https://sunarena.co.za/afrikaans-groot",
+     contact_info: "+27 12 264 7200",
+     is_featured: true,
+     is_active: true,
+   },
+   {
+     title: "Electronic Music Festival",
+     description: "Two days of electronic music featuring international DJs and local talent with multiple stages and immersive experiences.",
+     event_type: "dj",
+     venue: "Ostrich Ranch",
+     address: "R27 Atlantis Road, Oudtshoorn, 6625",
+     city: "Oudtshoorn",
+     province: "Western Cape",
+     latitude: -33.5928,
+     longitude: 22.2,
+     event_date: "2024-08-15",
+     event_time: "14:00",
+     price_min: 300.00,
+     price_max: 800.00,
+     image_url: "https://example.com/events/electronic-festival.jpg",
+     website_url: "https://electronicfest.co.za",
+     contact_info: "+27 44 272 7115",
+     is_featured: false,
+     is_active: true,
+   },
+ ];
+
+ for (const event of entertainmentEvents) {
+   await sql`
+     INSERT INTO entertainment_events (
+       title, description, event_type, venue, address, city, province,
+       latitude, longitude, event_date, event_time, price_min, price_max,
+       image_url, website_url, contact_info, is_featured, is_active
+     )
+     VALUES (
+       ${event.title}, ${event.description}, ${event.event_type}, ${event.venue},
+       ${event.address}, ${event.city}, ${event.province}, ${event.latitude},
+       ${event.longitude}, ${event.event_date}, ${event.event_time}, ${event.price_min},
+       ${event.price_max}, ${event.image_url}, ${event.website_url}, ${event.contact_info},
+       ${event.is_featured}, ${event.is_active}
+     )
+     ON CONFLICT DO NOTHING
+   `;
+ }
+
+ // Add some sample bookmarks
+ const users = await sql`SELECT id FROM users LIMIT 5`;
+ const events = await sql`SELECT id FROM entertainment_events LIMIT 5`;
+
+ if (users.length > 0 && events.length > 0) {
+   for (let i = 0; i < Math.min(users.length, events.length); i++) {
+     await sql`
+       INSERT INTO user_event_bookmarks (user_id, event_id)
+       VALUES (${users[i].id}, ${events[i].id})
+       ON CONFLICT (user_id, event_id) DO NOTHING
+     `;
+   }
+ }
+
+ console.log("✅ Entertainment events populated successfully");
 }

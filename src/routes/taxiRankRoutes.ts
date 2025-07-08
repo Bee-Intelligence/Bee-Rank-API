@@ -3,7 +3,7 @@ import { TaxiRankController } from "../controllers/TaxiRankController";
 import { TaxiRankService } from "../services";
 
 const router = express.Router();
-const taxiRankService = new TaxiRankService("taxiRank");
+const taxiRankService = new TaxiRankService();
 const taxiRankController = new TaxiRankController(taxiRankService);
 
 // Taxi rank management routes

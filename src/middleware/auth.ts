@@ -2,7 +2,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { ServiceManager } from "../services";
 import type { AuthService } from "../services";
-import { createAppError } from "./errorHandling.js";
+import { createAppError } from "./errorHandling";
 
 declare global {
   namespace Express {
@@ -38,7 +38,7 @@ export const authenticate = async (
 
     // Convert payload to match req.user type
     req.user = {
-      id: payload.userId,
+      id: payload.user_id,
       email: payload.email,
       roles: [payload.role]
     };

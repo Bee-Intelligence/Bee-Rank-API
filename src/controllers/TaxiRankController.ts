@@ -54,19 +54,16 @@ export class TaxiRankController extends BaseController {
       ...(radius && { radius: Number.parseFloat(radius as string) }),
     };
 
-    const { ranks, total } = await this.taxiRankService.getRanks(searchParams);
-    return this.paginatedResponse(
-      res,
-      ranks,
-      total,
-      pagination.page!,
-      pagination.per_page!,
+    const ranks = await this.taxiRankService.getAllTaxiRanks(
+      pagination.per_page,
+      pagination.offset
     );
+    return this.successResponse(res, ranks);
   });
 
   getById = this.asyncHandler(async (req: Request, res: Response) => {
     const id = this.validateId(req.params.id);
-    const rank = await this.taxiRankService.getRankById(id);
+    const rank = await this.taxiRankService.getTaxiRankById(req.params.id);
 
     if (!rank) {
       return res
@@ -85,11 +82,10 @@ export class TaxiRankController extends BaseController {
       limit = 50,
     } = nearbyQuerySchema.parse(req.query);
 
-    const nearbyRanks = await this.taxiRankService.getNearbyRanks(
+    const nearbyRanks = await this.taxiRankService.getNearbyTaxiRanks(
       latitude,
       longitude,
-      radius,
-      limit,
+      radius / 1000, // Convert meters to kilometers
     );
     return this.successResponse(res, nearbyRanks);
   });
@@ -98,7 +94,20 @@ export class TaxiRankController extends BaseController {
     const validatedData = createTaxiRankSchema.parse(
       req.body,
     ) as CreateTaxiRankRequest;
-    const rank = await this.taxiRankService.createRank(validatedData);
+    
+    const rankData = {
+      name: validatedData.name,
+      latitude: validatedData.latitude,
+      longitude: validatedData.longitude,
+      address: validatedData.address,
+      city: validatedData.city,
+      province: validatedData.province,
+      capacity: validatedData.capacity || 50,
+      operating_hours: this.transformOperatingHours(validatedData.operating_hours),
+      facilities: this.transformFacilities(validatedData.facilities),
+    };
+    
+    const rank = await this.taxiRankService.createTaxiRank(rankData);
     return this.successResponse(
       res,
       rank,
@@ -113,7 +122,16 @@ export class TaxiRankController extends BaseController {
       req.body,
     ) as UpdateTaxiRankRequest;
 
-    const rank = await this.taxiRankService.updateRank(id, validatedData);
+    const updateData = {
+      name: validatedData.name,
+      address: validatedData.address,
+      capacity: validatedData.capacity,
+      operating_hours: this.transformOperatingHours(validatedData.operating_hours),
+      facilities: this.transformFacilities(validatedData.facilities),
+      is_active: validatedData.is_active,
+    };
+    
+    const rank = await this.taxiRankService.updateTaxiRank(req.params.id, updateData);
     if (!rank) {
       return res
         .status(404)
@@ -125,7 +143,7 @@ export class TaxiRankController extends BaseController {
 
   delete = this.asyncHandler(async (req: Request, res: Response) => {
     const id = this.validateId(req.params.id);
-    const success = await this.taxiRankService.deleteRank(id);
+    const success = await this.taxiRankService.deleteTaxiRank(req.params.id);
 
     if (!success) {
       return res
@@ -138,13 +156,13 @@ export class TaxiRankController extends BaseController {
 
   getByCity = this.asyncHandler(async (req: Request, res: Response) => {
     const { city } = req.params;
-    const ranks = await this.taxiRankService.getRanksByCity(city);
+    const ranks = await this.taxiRankService.getTaxiRanksByCity(city);
     return this.successResponse(res, ranks);
   });
 
   getByProvince = this.asyncHandler(async (req: Request, res: Response) => {
     const { province } = req.params;
-    const ranks = await this.taxiRankService.getRanksByProvince(province);
+    const ranks = await this.taxiRankService.getTaxiRanksByProvince(province);
     return this.successResponse(res, ranks);
   });
 
@@ -165,57 +183,70 @@ export class TaxiRankController extends BaseController {
       name: query.trim(),
     };
 
-    const { ranks, total } = await this.taxiRankService.getRanks(searchParams);
-    return this.paginatedResponse(
-      res,
-      ranks,
-      total,
-      pagination.page!,
-      pagination.per_page!,
-    );
+    const ranks = await this.taxiRankService.searchTaxiRanks(query.trim());
+    return this.successResponse(res, ranks);
   });
 
   getStats = this.asyncHandler(async (req: Request, res: Response) => {
     // Get basic statistics about taxi ranks
-    const allRanks = await this.taxiRankService.getRanks({
-      limit: 10000,
-      offset: 0,
-    });
-
-    const stats = {
-      total_ranks: allRanks.total,
-      active_ranks: allRanks.ranks.filter((rank) => rank.is_active).length,
-      cities: [...new Set(allRanks.ranks.map((rank) => rank.city))].length,
-      provinces: [...new Set(allRanks.ranks.map((rank) => rank.province))]
-        .length,
-      by_city: this.groupBy(allRanks.ranks, "city"),
-      by_province: this.groupBy(allRanks.ranks, "province"),
-    };
+    const stats = await this.taxiRankService.getTaxiRankStats();
 
     return this.successResponse(res, stats);
   });
 
   getCities = this.asyncHandler(async (req: Request, res: Response) => {
-    const allRanks = await this.taxiRankService.getRanks({
-      limit: 10000,
-      offset: 0,
-    });
-    const cities = [...new Set(allRanks.ranks.map((rank) => rank.city))].sort();
+    const allRanks = await this.taxiRankService.getAllTaxiRanks(10000, 0);
+    const cities = [...new Set(allRanks.map((rank) => rank.city))].sort();
 
     return this.successResponse(res, cities);
   });
 
   getProvinces = this.asyncHandler(async (req: Request, res: Response) => {
-    const allRanks = await this.taxiRankService.getRanks({
-      limit: 10000,
-      offset: 0,
-    });
+    const allRanks = await this.taxiRankService.getAllTaxiRanks(10000, 0);
     const provinces = [
-      ...new Set(allRanks.ranks.map((rank) => rank.province)),
+      ...new Set(allRanks.map((rank) => rank.province)),
     ].sort();
 
     return this.successResponse(res, provinces);
   });
+
+  private transformOperatingHours(hours?: Record<string, string>): { open: string; close: string } | undefined {
+    if (!hours) return undefined;
+    
+    // If it's already in the correct format
+    if ('open' in hours && 'close' in hours) {
+      return { open: hours.open, close: hours.close };
+    }
+    
+    // Try to extract from various possible formats
+    const open = hours.open || hours.opening || hours.start || '06:00';
+    const close = hours.close || hours.closing || hours.end || '22:00';
+    
+    return { open, close };
+  }
+
+  private transformFacilities(facilities?: Record<string, any>): string[] | undefined {
+    if (!facilities) return undefined;
+    
+    // If it's already an array
+    if (Array.isArray(facilities)) {
+      return facilities.map(f => String(f));
+    }
+    
+    // If it's an object, extract values or keys
+    if (typeof facilities === 'object') {
+      // Try to get values first, then keys
+      const values = Object.values(facilities);
+      if (values.length > 0 && values.every(v => typeof v === 'string' || typeof v === 'boolean')) {
+        return values.filter(v => v).map(v => String(v));
+      }
+      
+      // Fall back to keys
+      return Object.keys(facilities);
+    }
+    
+    return undefined;
+  }
 
   private groupBy(array: any[], key: string): Record<string, number> {
     return array.reduce((result, item) => {

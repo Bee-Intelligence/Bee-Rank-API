@@ -26,6 +26,7 @@ import userActivityRoutes from "./routes/userActivityRoutes";
 import userRoutes from "./routes/userRoutes";
 import { journeyRoutes } from "./routes/journeyRoutes";
 import hikingSignRoutes from "./routes/hikingSignRoutes";
+import entertainmentEventRoutes from "./routes/entertainmentEventRoutes";
 
 // Load environment variables
 dotenv.config();
@@ -104,6 +105,7 @@ app.get("/api/test", (req, res) => {
       "GET /api/devices",
       "GET /api/hiking-signs",
       "GET /api/transit-routes",
+      "GET /api/entertainment-events",
     ],
   });
 });
@@ -135,6 +137,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/hiking-signs", hikingSignRoutes);
 app.use("/api/transit-routes", transitRouteRoutes);
+app.use("/api/entertainment-events", entertainmentEventRoutes);
 
 // Alternative route paths for compatibility
 app.use("/api/ranks", taxiRankRoutes); // Also available as /api/ranks
@@ -162,6 +165,7 @@ app.use("/api/*", (req, res) => {
       "/api/devices",
       "/api/hiking-signs",
       "/api/transit-routes",
+      "/api/entertainment-events",
     ],
   });
 });

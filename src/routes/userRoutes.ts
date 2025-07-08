@@ -3,7 +3,7 @@ import { UserController } from "../controllers/UserController";
 import { UserService } from "../services";
 
 const router = express.Router();
-const userService = new UserService("user");
+const userService = new UserService();
 const userController = new UserController(userService);
 
 // User management routes

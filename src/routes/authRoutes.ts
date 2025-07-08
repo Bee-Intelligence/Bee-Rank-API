@@ -1,8 +1,7 @@
 import express from "express";
 import type { Request, Response } from "express";
 import { ServiceManager } from "../services";
-import type { AuthService } from "../services/AuthService";
-import type { UserService } from "../services/UserService";
+import type { AuthService, UserService } from "../services";
 
 const router = express.Router();
 
@@ -44,7 +43,7 @@ router.post("/register", async (req: Request, res: Response) => {
     }
 
     // Register the user
-    const user = await authService.registerUser({
+    const { user, tokens } = await authService.register({
       email,
       password,
       first_name: name.split(' ')[0],
@@ -90,15 +89,15 @@ router.post("/login", async (req: Request, res: Response) => {
     }
 
     // Login the user
-    const loginResponse = await authService.loginUser(email, password);
+    const loginResponse = await authService.login({ email, password });
 
     res.json({
       success: true,
       message: "Login successful",
       user: loginResponse.user,
-      token: loginResponse.token,
-      refresh_token: loginResponse.refresh_token,
-      expires_in: loginResponse.expires_in,
+      token: loginResponse.tokens.access_token,
+      refresh_token: loginResponse.tokens.refresh_token,
+      expires_in: loginResponse.tokens.expires_in,
     });
   } catch (error) {
     console.error("Error logging in User:", error);
@@ -141,14 +140,9 @@ router.post("/logout", async (req: Request, res: Response) => {
     }
 
     // Logout the user
-    const success = await authService.logoutUser(refresh_token);
+    await authService.logout((req as any).user?.id || "unknown", refresh_token);
 
-    if (!success) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid refresh token",
-      });
-    }
+    // logout returns void, so we assume success if no error is thrown
 
     res.json({
       success: true,
@@ -191,7 +185,7 @@ router.post("/refresh", async (req: Request, res: Response) => {
     res.json({
       success: true,
       message: "Token refreshed successfully",
-      token: tokens.token,
+      token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_in: tokens.expires_in,
     });
@@ -247,7 +241,7 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
     }
 
     // Generate a password reset token
-    const resetToken = await authService.generatePasswordResetToken(email);
+    await authService.resetPassword(email);
 
     // In a real application, you would send an email with the reset link
     // For now, we'll just return the token in the response
@@ -256,7 +250,7 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
       message: "Password reset email sent successfully",
       email,
       // Only include the token in development environment
-      ...(process.env.NODE_ENV === "development" && { reset_token: resetToken }),
+      // resetToken is not available in this scope since resetPassword doesn't return it
     });
   } catch (error) {
     console.error("Error processing forgot password:", error);
@@ -308,19 +302,11 @@ router.post("/reset-password", async (req: Request, res: Response) => {
     }
 
     // Reset the password
-    const success = await authService.resetPassword(token, new_password);
-
-    if (success) {
-      res.json({
-        success: true,
-        message: "Password reset successfully",
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: "Failed to reset password",
-      });
-    }
+    await authService.confirmPasswordReset(token, new_password);
+    res.json({
+      success: true,
+      message: "Password reset successfully",
+    });
   } catch (error) {
     console.error("Error resetting password:", error);
 
@@ -366,7 +352,7 @@ router.get("/me", async (req: Request, res: Response) => {
     }
 
     // Verify the token and extract user info
-    const tokenPayload = authService.verifyToken(token);
+    // Remove this duplicate line since we have it below
 
     // Get the user service
     const userService = ServiceManager.getInstance().getService<UserService>("user");
@@ -378,7 +364,8 @@ router.get("/me", async (req: Request, res: Response) => {
     }
 
     // Get the user profile
-    const user = await userService.getUserById(tokenPayload.userId);
+    const tokenData = await authService.verifyToken(token);
+    const user = await userService.getUserById(tokenData.user_id);
 
     if (!user) {
       return res.status(404).json({
@@ -446,7 +433,7 @@ router.put("/me", async (req: Request, res: Response) => {
     }
 
     // Verify the token and extract user info
-    const tokenPayload = authService.verifyToken(token);
+    // Remove this duplicate line since we have it below
 
     // Get the user service
     const userService = ServiceManager.getInstance().getService<UserService>("user");
@@ -466,7 +453,8 @@ router.put("/me", async (req: Request, res: Response) => {
     }
 
     // Update the user profile
-    const updatedUser = await userService.updateUser(tokenPayload.userId, {
+    const tokenData = await authService.verifyToken(token);
+    const updatedUser = await userService.updateUser(tokenData.user_id, {
       ...(first_name && { first_name }),
       ...(last_name && { last_name }),
       ...(phone && { phone }),
@@ -552,26 +540,20 @@ router.put("/change-password", async (req: Request, res: Response) => {
     }
 
     // Verify the token and extract user info
-    const tokenPayload = authService.verifyToken(token);
+    const tokenData = await authService.verifyToken(token);
 
     // Change the password
-    const success = await authService.changePassword(
-      tokenPayload.userId,
+    await authService.changePassword(
+      tokenData.user_id,
       current_password,
       new_password
     );
 
-    if (success) {
-      res.json({
-        success: true,
-        message: "Password changed successfully",
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: "Failed to change password",
-      });
-    }
+    // changePassword returns void, so we assume success if no error is thrown
+    res.json({
+      success: true,
+      message: "Password changed successfully",
+    });
   } catch (error) {
     console.error("Error changing password:", error);
 

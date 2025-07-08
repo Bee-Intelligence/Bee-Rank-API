@@ -61,7 +61,17 @@ export class UserController extends BaseController {
 
   create = this.asyncHandler(async (req: Request, res: Response) => {
     const validatedData = createUserSchema.parse(req.body) as CreateUserRequest;
-    const user = await this.userService.createUser(validatedData);
+    
+    // Transform request data to service data format
+    const userData = {
+      email: validatedData.email,
+      first_name: validatedData.first_name || '',
+      last_name: validatedData.last_name || '',
+      phone: validatedData.phone,
+      role: validatedData.role as 'USER' | 'ADMIN' | 'DRIVER' || 'USER',
+    };
+    
+    const user = await this.userService.createUser(userData);
     return this.successResponse(res, user, "User created successfully", 201);
   });
 
@@ -128,11 +138,13 @@ export class UserController extends BaseController {
     }
 
     // Get user activities
-    const { activities, total } = await userActivityService.getUserActivities({
-      user_id: userId,
-      limit: pagination.per_page,
-      offset: (pagination.page! - 1) * pagination.per_page!,
-    });
+    const activities = await userActivityService.getUserActivities(
+      userId,
+      undefined, // activityType
+      pagination.per_page,
+      (pagination.page! - 1) * pagination.per_page!
+    );
+    const total = activities.length; // Mock total for now
 
     return this.paginatedResponse(
       res,

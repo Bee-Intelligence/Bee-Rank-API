@@ -1,0 +1,3 @@
+@echo off
+echo Starting Firebase Emulator...
+firebase emulators:start --only firestore --project bee-rank-1

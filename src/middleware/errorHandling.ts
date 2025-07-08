@@ -66,8 +66,8 @@ export const errorHandler = async (
       const ANONYMOUS_USER_ID = "00000000-0000-0000-0000-000000000000";
 
       await analyticsService.trackEvent({
-        event_type: "error",
-        user_id: (req as any).user?.id || ANONYMOUS_USER_ID, // Use constant UUID for anonymous users
+        eventType: "error",
+        userId: (req as any).user?.id || ANONYMOUS_USER_ID, // Use constant UUID for anonymous users
         metadata: {
           error_message: err.message,
           error_code: err.statusCode,
@@ -75,9 +75,9 @@ export const errorHandler = async (
           method: req.method,
           user_agent: req.get("User-Agent"),
           ip: req.ip,
+          sessionId: (req as any).sessionId || req.get("Session-ID"),
+          timestamp: new Date().toISOString(),
         },
-        session_id: (req as any).sessionId || req.get("Session-ID"),
-        timestamp: new Date(),
       });
     }
   } catch (analyticsError) {

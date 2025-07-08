@@ -61,7 +61,7 @@ router.get("/", async (req: Request, res: Response) => {
     };
 
     const { activities, total } =
-      await userActivityService.getUserActivities(searchParams);
+      await userActivityService.getUserActivitiesWithParams(searchParams);
 
     res.json({
       success: true,

@@ -2,7 +2,7 @@
 import type { NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { ServiceManager } from "../services/ServiceManager.js";
+import { ServiceManager } from "../services";
 
 export const securityMiddleware = {
   // Basic security headers
